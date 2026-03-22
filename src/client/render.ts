@@ -101,33 +101,37 @@ function computeLines(state: RenderState): string[] {
 export function render(state: RenderState): void {
 	const lines = computeLines(state)
 	const out: string[] = []
+	const screenRows = process.stdout.rows ?? lines.length
+
+	// Only render the bottom `screenRows` lines (the visible viewport).
+	// Writing more than the viewport height pushes duplicates into scrollback.
+	const visibleStart = Math.max(0, lines.length - screenRows)
+	const visible = lines.slice(visibleStart)
+	const prevVisible = Math.min(prevLineCount, screenRows)
 
 	out.push(SYNC_START)
 	out.push(HIDE_CURSOR)
 
 	if (prevLineCount === 0) {
-		// First render: we're at the cursor's current position.
-		// Just write lines. The \r\n will scroll the terminal as needed.
-		for (let i = 0; i < lines.length; i++) {
-			out.push(CLEAR_LINE + lines[i]!)
-			if (i < lines.length - 1) out.push("\r\n")
+		for (let i = 0; i < visible.length; i++) {
+			out.push(CLEAR_LINE + visible[i]!)
+			if (i < visible.length - 1) out.push("\r\n")
 		}
 	} else {
-		// Move up to top of previous frame
-		out.push("\r" + moveUp(prevLineCount - 1))
+		// Move up to top of visible area (not full frame — that's in scrollback)
+		out.push("\r" + moveUp(prevVisible - 1))
 
-		// Write all lines — if more than before, terminal scrolls naturally
-		for (let i = 0; i < lines.length; i++) {
-			out.push(CLEAR_LINE + lines[i]!)
-			if (i < lines.length - 1) out.push("\r\n")
+		for (let i = 0; i < visible.length; i++) {
+			out.push(CLEAR_LINE + visible[i]!)
+			if (i < visible.length - 1) out.push("\r\n")
 		}
 
-		// Clear leftover lines if frame shrank
-		if (prevLineCount > lines.length) {
-			for (let i = lines.length; i < prevLineCount; i++) {
+		// Clear leftover lines if visible area shrank
+		if (prevVisible > visible.length) {
+			for (let i = visible.length; i < prevVisible; i++) {
 				out.push("\r\n" + CLEAR_LINE)
 			}
-			out.push(moveUp(prevLineCount - lines.length))
+			out.push(moveUp(prevVisible - visible.length))
 		}
 	}
 
@@ -143,9 +147,10 @@ export function render(state: RenderState): void {
 
 export function clearFrame(): void {
 	if (prevLineCount === 0) return
-	// Move from the prompt line back to the frame top, then clear to the screen end.
-	// This matches the old restart behavior: the next process redraws into a clean area.
-	process.stdout.write(`\r${moveUp(prevLineCount - 1)}${ESC}[J`)
+	// Move up to the top of the visible area (not full frame), then clear down.
+	const rows = process.stdout.rows ?? prevLineCount
+	const visibleLines = Math.min(prevLineCount, rows)
+	process.stdout.write(`\r${moveUp(visibleLines - 1)}${ESC}[J`)
 	prevLineCount = 0
 	maxContentHeight = 0
 	debugRender = {
