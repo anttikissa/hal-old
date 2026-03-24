@@ -1,107 +1,122 @@
-// CLI -- terminal input handling. Thin layer: reads keypresses, calls client
-// for state changes, renderer for display. See docs/terminal.md for rules.
+// CLI -- terminal input handling. See docs/terminal.md for rules.
+//
+// This layer is intentionally thin:
+//   raw stdin bytes -> keys.parseKeys() -> KeyEvent[]
+//   KeyEvent -> prompt editor OR app-level keybinding
+//   state change -> render.draw()
 
 import { client } from '../client.ts'
 import { render } from './render.ts'
+import { keys } from '../cli/keys.ts'
+import { prompt } from '../cli/prompt.ts'
+import { clipboard } from '../cli/clipboard.ts'
+import type { KeyEvent } from '../cli/keys.ts'
 import { perf } from '../perf.ts'
 
 const RESTART_CODE = 100
+const KITTY_TERMS = /^(kitty|ghostty|iTerm\.app)$/
+const useKitty = KITTY_TERMS.test(process.env.TERM_PROGRAM ?? '')
+const KITTY_ON = '\x1b[>19u'
+const KITTY_OFF = '\x1b[<u'
+const BRACKETED_PASTE_ON = '\x1b[?2004h'
+const BRACKETED_PASTE_OFF = '\x1b[?2004l'
+
+let terminalCleaned = false
+
+function draw(force = false): void {
+	render.draw(force)
+}
+
+function cleanupTerminal(): void {
+	if (terminalCleaned) return
+	terminalCleaned = true
+	if (useKitty) process.stdout.write(KITTY_OFF)
+	process.stdout.write(BRACKETED_PASTE_OFF)
+	if (process.stdin.isTTY) process.stdin.setRawMode(false)
+}
+
+function submit(): void {
+	const text = prompt.text().trim()
+	if (!text) return
+	prompt.pushHistory(text)
+	client.sendCommand('prompt', text)
+	prompt.clear()
+}
+
+function syncPromptToClient(): void {
+	client.setPrompt(prompt.text(), prompt.cursorPos())
+}
+
+function handleAppKey(k: KeyEvent): boolean {
+	if (k.key === 'r' && k.ctrl) {
+		render.clearFrame()
+		cleanupTerminal()
+		process.exit(RESTART_CODE)
+	}
+	if (k.key === 'c' && k.ctrl) {
+		cleanupTerminal()
+		process.stdout.write('\r\n')
+		process.exit(0)
+	}
+	if (k.key === 'd' && k.ctrl && !prompt.text()) {
+		cleanupTerminal()
+		process.stdout.write('\r\n')
+		process.exit(0)
+	}
+	if (k.key === 'l' && k.ctrl) { draw(true); return true }
+	if (k.key === 't' && k.ctrl) {
+		if (client.state.tabs.length < 40) client.sendCommand('open')
+		return true
+	}
+	if (k.key === 'w' && k.ctrl) {
+		if (client.state.tabs.length > 1) client.sendCommand('close')
+		return true
+	}
+	if (k.key === 'n' && k.ctrl) { client.nextTab(); return true }
+	if (k.key === 'p' && k.ctrl) { client.prevTab(); return true }
+	if (k.key === 'enter' && !k.shift) {
+		if (clipboard.hasPendingPastes()) return true
+		submit()
+		syncPromptToClient()
+		draw()
+		return true
+	}
+	return false
+}
 
 function startCli(signal: AbortSignal): void {
-	// Wire client state changes to terminal repaint.
-	client.setOnChange((force) => render.draw(force))
-
-	// Bootstrap client (replays IPC log, starts tailing events).
+	client.setOnChange((force) => draw(force))
+	prompt.setRenderCallback(() => {
+		syncPromptToClient()
+		draw()
+	})
 	client.startClient(signal)
 
 	if (process.stdin.isTTY) {
 		process.stdin.setRawMode(true)
 		process.stdin.resume()
+		if (useKitty) process.stdout.write(KITTY_ON)
+		process.stdout.write(BRACKETED_PASTE_ON)
 	}
+	process.on('exit', cleanupTerminal)
 
-	render.draw()
+	draw()
 	perf.mark('First render done')
-
-	process.stdout.on('resize', () => render.draw(true))
+	process.stdout.on('resize', () => draw(true))
 
 	process.stdin.on('data', (data: Buffer) => {
-		for (let i = 0; i < data.length; i++) {
-			const byte = data[i]!
-
-			// Ctrl-R: restart. Clear the frame so the new process paints fresh.
-			if (byte === 0x12) {
-				render.clearFrame()
-				if (process.stdin.isTTY) process.stdin.setRawMode(false)
-				process.exit(RESTART_CODE)
-			}
-
-			// Ctrl-C / Ctrl-D: quit
-			if (byte === 0x03 || byte === 0x04) {
-				if (process.stdin.isTTY) process.stdin.setRawMode(false)
-				process.stdout.write('\r\n')
-				process.exit(0)
-			}
-
-			// Ctrl-T: new tab (hard cap at 40)
-			if (byte === 0x14) {
-				if (client.state.tabs.length < 40) client.sendCommand('open')
-				continue
-			}
-
-			// Ctrl-W: close tab
-			if (byte === 0x17) {
-				if (client.state.tabs.length > 1) client.sendCommand('close')
-				continue
-			}
-
-			// Ctrl-N / Ctrl-P: tab switching
-			if (byte === 0x0e) { client.nextTab(); continue }
-			if (byte === 0x10) { client.prevTab(); continue }
-
-			// Ctrl-L: force redraw
-			if (byte === 0x0c) { render.draw(true); continue }
-
-			// Enter
-			if (byte === 0x0d || byte === 0x0a) {
-				if (client.state.promptText.trim()) client.sendCommand('prompt', client.state.promptText)
-				client.clearPrompt()
-				continue
-			}
-
-			// Backspace
-			if (byte === 0x7f || byte === 0x08) {
-				if (client.state.promptCursor > 0) {
-					const t = client.state.promptText
-					const c = client.state.promptCursor
-					client.setPrompt(t.slice(0, c - 1) + t.slice(c), c - 1)
-				}
-				continue
-			}
-
-			// Arrow keys
-			if (byte === 0x1b && i + 2 < data.length && data[i + 1] === 0x5b) {
-				const code = data[i + 2]
-				if (code === 0x44 && client.state.promptCursor > 0)
-					client.setPrompt(client.state.promptText, client.state.promptCursor - 1)
-				if (code === 0x43 && client.state.promptCursor < client.state.promptText.length)
-					client.setPrompt(client.state.promptText, client.state.promptCursor + 1)
-				i += 2
-				continue
-			}
-
-			// Printable ASCII
-			if (byte >= 0x20 && byte < 0x7f) {
-				const ch = String.fromCharCode(byte)
-				const t = client.state.promptText
-				const c = client.state.promptCursor
-				client.setPrompt(t.slice(0, c) + ch + t.slice(c), c + 1)
-				continue
+		const cols = process.stdout.columns || 80
+		const contentWidth = cols - 1
+		for (const k of keys.parseKeys(data.toString('utf-8'))) {
+			if (handleAppKey(k)) continue
+			if (prompt.handleKey(k, contentWidth)) {
+				syncPromptToClient()
+				draw()
 			}
 		}
 	})
 
 	perf.mark('Client ready to read input')
-
 }
 
 export const cli = { startCli }
