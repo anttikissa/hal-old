@@ -11,12 +11,12 @@
 //   3. parseKeys()  — convenience: split + parse in one call
 
 export interface KeyEvent {
-	key: string       // 'a', 'left', 'up', 'enter', 'backspace', 'tab', 'escape', etc.
-	char?: string     // printable character to insert (may be multi-byte from paste)
+	key: string // 'a', 'left', 'up', 'enter', 'backspace', 'tab', 'escape', etc.
+	char?: string // printable character to insert (may be multi-byte from paste)
 	shift: boolean
-	alt: boolean      // Option key on macOS
+	alt: boolean // Option key on macOS
 	ctrl: boolean
-	cmd: boolean      // Super/Meta key; Command (⌘) on macOS
+	cmd: boolean // Super/Meta key; Command (⌘) on macOS
 }
 
 function ke(key: string, mods?: Partial<KeyEvent>): KeyEvent {
@@ -39,14 +39,22 @@ function parseMods(raw: number): { shift: boolean; alt: boolean; ctrl: boolean; 
 
 // Arrow/home/end keys identified by the final byte after CSI parameters.
 const CSI_SUFFIX_KEYS: Record<string, string> = {
-	A: 'up', B: 'down', C: 'right', D: 'left',
-	H: 'home', F: 'end',
+	A: 'up',
+	B: 'down',
+	C: 'right',
+	D: 'left',
+	H: 'home',
+	F: 'end',
 }
 
 // Function/editing keys identified by number before ~.
 const CSI_TILDE_KEYS: Record<number, string> = {
-	1: 'home', 2: 'insert', 3: 'delete', 4: 'end',
-	5: 'pageup', 6: 'pagedown',
+	1: 'home',
+	2: 'insert',
+	3: 'delete',
+	4: 'end',
+	5: 'pageup',
+	6: 'pagedown',
 }
 
 // Parse a CSI sequence like \x1b[1;2D (shift+left) or \x1b[3~ (delete).
@@ -99,7 +107,7 @@ function parseCsiU(body: string): KeyEvent | null {
 	let text: string | undefined
 	if (fields.length >= 3 && fields[2]) {
 		const cps = fields[2].split(':').map(Number)
-		if (cps.length > 0 && cps.every(n => Number.isFinite(n) && n > 0)) {
+		if (cps.length > 0 && cps.every((n) => Number.isFinite(n) && n > 0)) {
 			text = String.fromCodePoint(...cps)
 		}
 	}
@@ -124,17 +132,41 @@ function parseCsiU(body: string): KeyEvent | null {
 	// Printable: use text field if available, else derive from codepoint
 	const ch = text ?? (codepoint >= 0x20 ? String.fromCodePoint(codepoint) : undefined)
 	const key = ch?.toLowerCase() ?? `u+${codepoint.toString(16)}`
-	return ke(key, { ...mods, char: (!mods.ctrl && !mods.cmd) ? ch : undefined })
+	return ke(key, { ...mods, char: !mods.ctrl && !mods.cmd ? ch : undefined })
 }
 
 // ── Ctrl key mapping ─────────────────────────────────────────────────────────
 // Maps byte values 0-31 and 127 to key names. Used for legacy single-byte
 // control codes (non-kitty terminals).
 const CTRL_KEYS: Record<number, string> = {
-	0: 'space', 1: 'a', 2: 'b', 3: 'c', 4: 'd', 5: 'e', 6: 'f', 7: 'g',
-	8: 'backspace', 9: 'tab', 10: 'enter', 11: 'k', 12: 'l', 13: 'enter',
-	14: 'n', 15: 'o', 16: 'p', 17: 'q', 18: 'r', 19: 's', 20: 't',
-	21: 'u', 22: 'v', 23: 'w', 24: 'x', 25: 'y', 26: 'z', 27: 'escape',
+	0: 'space',
+	1: 'a',
+	2: 'b',
+	3: 'c',
+	4: 'd',
+	5: 'e',
+	6: 'f',
+	7: 'g',
+	8: 'backspace',
+	9: 'tab',
+	10: 'enter',
+	11: 'k',
+	12: 'l',
+	13: 'enter',
+	14: 'n',
+	15: 'o',
+	16: 'p',
+	17: 'q',
+	18: 'r',
+	19: 's',
+	20: 't',
+	21: 'u',
+	22: 'v',
+	23: 'w',
+	24: 'x',
+	25: 'y',
+	26: 'z',
+	27: 'escape',
 	31: '/',
 	127: 'backspace',
 }

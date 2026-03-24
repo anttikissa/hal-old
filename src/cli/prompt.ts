@@ -26,8 +26,8 @@ const MAX_UNDO = 200
 // layout. This is used for vertical cursor movement and for rendering.
 
 interface WrappedLayout {
-	lines: string[]     // wrapped lines
-	starts: number[]    // character offset where each wrapped line begins
+	lines: string[] // wrapped lines
+	starts: number[] // character offset where each wrapped line begins
 }
 
 // Simple word wrapper for plain text (no ANSI). Splits on \n first,
@@ -98,22 +98,26 @@ function verticalMove(
 	const g = goal ?? col
 	const target = row + dir
 	if (target < 0 || target >= lines.length) return { cursor: cur, goalCol: g, atBoundary: true }
-	return { cursor: rowColToCursor(input, target, g, width), goalCol: g, atBoundary: false }
+	return {
+		cursor: rowColToCursor(input, target, g, width),
+		goalCol: g,
+		atBoundary: false,
+	}
 }
 
 // Move cursor left to the start of the previous word.
 function wordLeft(text: string, pos: number): number {
 	let i = pos - 1
-	while (i > 0 && /\s/.test(text[i]!)) i--       // skip whitespace
-	while (i > 0 && !/\s/.test(text[i - 1]!)) i--   // skip word chars
+	while (i > 0 && /\s/.test(text[i]!)) i-- // skip whitespace
+	while (i > 0 && !/\s/.test(text[i - 1]!)) i-- // skip word chars
 	return Math.max(0, i)
 }
 
 // Move cursor right to the end of the next word.
 function wordRight(text: string, pos: number): number {
 	let i = pos
-	while (i < text.length && /\s/.test(text[i]!)) i++    // skip whitespace
-	while (i < text.length && !/\s/.test(text[i]!)) i++    // skip word chars
+	while (i < text.length && /\s/.test(text[i]!)) i++ // skip whitespace
+	while (i < text.length && !/\s/.test(text[i]!)) i++ // skip word chars
 	return i
 }
 
@@ -121,19 +125,23 @@ function wordRight(text: string, pos: number): number {
 
 let buf = ''
 let cursor = 0
-let goalCol: number | null = null   // sticky column for vertical movement
-let selAnchor: number | null = null  // null = no selection
+let goalCol: number | null = null // sticky column for vertical movement
+let selAnchor: number | null = null // null = no selection
 
 // Undo / redo
-interface Snapshot { text: string; cursor: number; selAnchor: number | null }
+interface Snapshot {
+	text: string
+	cursor: number
+	selAnchor: number | null
+}
 let undoStack: Snapshot[] = []
 let redoStack: Snapshot[] = []
-let undoGrouping = false  // true while consecutive single-char inserts
+let undoGrouping = false // true while consecutive single-char inserts
 
 // History (submitted messages)
 let history: string[] = []
-let historyIndex = -1   // -1 = editing draft, 0..n-1 = browsing
-let historyDraft = ''   // saved draft when entering history mode
+let historyIndex = -1 // -1 = editing draft, 0..n-1 = browsing
+let historyDraft = '' // saved draft when entering history mode
 
 // Called when async paste resolves (image placeholder -> path)
 let renderCallback: (() => void) | null = null
@@ -280,19 +288,31 @@ function resolvePlaceholder(placeholder: string, replacement: string): void {
 }
 
 function doPaste(): void {
-	const text = clipboard.cleanPaste(clipboard.pasteFromClipboard((placeholder, replacement) => {
-		resolvePlaceholder(placeholder, replacement)
-	}))
+	const text = clipboard.cleanPaste(
+		clipboard.pasteFromClipboard((placeholder, replacement) => {
+			resolvePlaceholder(placeholder, replacement)
+		}),
+	)
 	if (text) replaceSelection(text)
 }
 
 // ── Public state accessors ───────────────────────────────────────────────────
 
-function setHistory(h: string[]): void { history = h; historyIndex = -1; historyDraft = '' }
-function pushHistory(text: string): void { history.push(text) }
+function setHistory(h: string[]): void {
+	history = h
+	historyIndex = -1
+	historyDraft = ''
+}
+function pushHistory(text: string): void {
+	history.push(text)
+}
 
-function text(): string { return buf }
-function cursorPos(): number { return cursor }
+function text(): string {
+	return buf
+}
+function cursorPos(): number {
+	return cursor
+}
 
 function setText(t: string, c?: number): void {
 	buf = t
@@ -320,7 +340,9 @@ function reset(): void {
 	history = []
 }
 
-function setRenderCallback(cb: () => void): void { renderCallback = cb }
+function setRenderCallback(cb: () => void): void {
+	renderCallback = cb
+}
 
 // ── Key handling ─────────────────────────────────────────────────────────────
 // Returns true if the key was handled by the prompt editor.
@@ -333,17 +355,44 @@ function handleKey(k: KeyEvent, contentWidth: number): boolean {
 
 	// Cmd shortcuts (macOS — only arrive via kitty keyboard protocol)
 	if (k.cmd) {
-		if (k.key === 'c') { const s = selRange(); if (s) writeToClipboard(buf.slice(s.start, s.end)); return true }
-		if (k.key === 'x') { const s = selRange(); if (s) { writeToClipboard(buf.slice(s.start, s.end)); deleteRange(s.start, s.end) }; return true }
-		if (k.key === 'v') { doPaste(); return true }
-		if (k.key === 'a') { selAnchor = 0; cursor = buf.length; return true }
-		if (k.key === 'u' && k.shift) { redo(); return true }
-		if (k.key === 'u') { undo(); return true }
+		if (k.key === 'c') {
+			const s = selRange()
+			if (s) writeToClipboard(buf.slice(s.start, s.end))
+			return true
+		}
+		if (k.key === 'x') {
+			const s = selRange()
+			if (s) {
+				writeToClipboard(buf.slice(s.start, s.end))
+				deleteRange(s.start, s.end)
+			}
+			return true
+		}
+		if (k.key === 'v') {
+			doPaste()
+			return true
+		}
+		if (k.key === 'a') {
+			selAnchor = 0
+			cursor = buf.length
+			return true
+		}
+		if (k.key === 'u' && k.shift) {
+			redo()
+			return true
+		}
+		if (k.key === 'u') {
+			undo()
+			return true
+		}
 		return false
 	}
 
 	// Enter: shift+enter inserts newline; plain enter deferred to caller (submit)
-	if (k.key === 'enter' && k.shift && !k.alt) { replaceSelection('\n'); return true }
+	if (k.key === 'enter' && k.shift && !k.alt) {
+		replaceSelection('\n')
+		return true
+	}
 	if (k.key === 'enter') return false
 
 	// Backspace / Delete
@@ -369,30 +418,63 @@ function handleKey(k: KeyEvent, contentWidth: number): boolean {
 	}
 
 	// Ctrl+U: kill to start, Ctrl+K: kill to end
-	if (k.key === 'u' && k.ctrl) { if (cursor > 0) deleteRange(0, cursor); return true }
-	if (k.key === 'k' && k.ctrl) { if (cursor < buf.length) deleteRange(cursor, buf.length); return true }
+	if (k.key === 'u' && k.ctrl) {
+		if (cursor > 0) deleteRange(0, cursor)
+		return true
+	}
+	if (k.key === 'k' && k.ctrl) {
+		if (cursor < buf.length) deleteRange(cursor, buf.length)
+		return true
+	}
 
 	// Ctrl+A/E: home/end (Emacs)
-	if (k.key === 'a' && k.ctrl) { move(0, k.shift); return true }
-	if (k.key === 'e' && k.ctrl) { move(buf.length, k.shift); return true }
+	if (k.key === 'a' && k.ctrl) {
+		move(0, k.shift)
+		return true
+	}
+	if (k.key === 'e' && k.ctrl) {
+		move(buf.length, k.shift)
+		return true
+	}
 
 	// Ctrl+V / Ctrl+Y: paste (same as Cmd+V)
-	if ((k.key === 'v' || k.key === 'y') && k.ctrl) { doPaste(); return true }
+	if ((k.key === 'v' || k.key === 'y') && k.ctrl) {
+		doPaste()
+		return true
+	}
 
 	// Ctrl+/: undo, Shift+Ctrl+/: redo
-	if (k.key === '/' && k.ctrl && k.shift) { redo(); return true }
-	if (k.key === '/' && k.ctrl) { undo(); return true }
+	if (k.key === '/' && k.ctrl && k.shift) {
+		redo()
+		return true
+	}
+	if (k.key === '/' && k.ctrl) {
+		undo()
+		return true
+	}
 
 	// Left / Right
 	if (k.key === 'left') {
-		if (k.alt) { move(wordLeft(buf, cursor), k.shift); return true }
-		if (k.shift) { move(cursor - 1, true); return true }
+		if (k.alt) {
+			move(wordLeft(buf, cursor), k.shift)
+			return true
+		}
+		if (k.shift) {
+			move(cursor - 1, true)
+			return true
+		}
 		collapseOrMove(cursor - 1, 'start')
 		return true
 	}
 	if (k.key === 'right') {
-		if (k.alt) { move(wordRight(buf, cursor), k.shift); return true }
-		if (k.shift) { move(cursor + 1, true); return true }
+		if (k.alt) {
+			move(wordRight(buf, cursor), k.shift)
+			return true
+		}
+		if (k.shift) {
+			move(cursor + 1, true)
+			return true
+		}
 		collapseOrMove(cursor + 1, 'end')
 		return true
 	}
@@ -402,7 +484,10 @@ function handleKey(k: KeyEvent, contentWidth: number): boolean {
 		const dir = k.key === 'up' ? -1 : 1
 
 		// Alt+up/down: jump to start/end of buffer
-		if (k.alt) { move(dir === -1 ? 0 : buf.length, k.shift); return true }
+		if (k.alt) {
+			move(dir === -1 ? 0 : buf.length, k.shift)
+			return true
+		}
 
 		if (!k.shift) {
 			// Try vertical move first (multiline prompt)
@@ -424,15 +509,21 @@ function handleKey(k: KeyEvent, contentWidth: number): boolean {
 						historyIndex--
 					} else {
 						// Already at oldest entry — move cursor to start
-						cursor = 0; goalCol = null; selAnchor = null
+						cursor = 0
+						goalCol = null
+						selAnchor = null
 						return true
 					}
 					buf = history[historyIndex]!
-					cursor = buf.length; goalCol = null; selAnchor = null
+					cursor = buf.length
+					goalCol = null
+					selAnchor = null
 				} else {
 					if (historyIndex < 0) {
 						// Not in history mode — move cursor to end
-						cursor = buf.length; goalCol = null; selAnchor = null
+						cursor = buf.length
+						goalCol = null
+						selAnchor = null
 						return true
 					}
 					if (historyIndex < history.length - 1) {
@@ -444,14 +535,17 @@ function handleKey(k: KeyEvent, contentWidth: number): boolean {
 						buf = historyDraft
 						historyDraft = ''
 					}
-					cursor = buf.length; goalCol = null; selAnchor = null
+					cursor = buf.length
+					goalCol = null
+					selAnchor = null
 				}
 				return true
 			}
 
 			// No history — just move to boundary
 			cursor = dir === -1 ? 0 : buf.length
-			goalCol = null; selAnchor = null
+			goalCol = null
+			selAnchor = null
 		} else {
 			// Shift+up/down: extend selection vertically
 			if (selAnchor === null) selAnchor = cursor
@@ -468,8 +562,14 @@ function handleKey(k: KeyEvent, contentWidth: number): boolean {
 	}
 
 	// Home / End
-	if (k.key === 'home') { move(0, k.shift); return true }
-	if (k.key === 'end') { move(buf.length, k.shift); return true }
+	if (k.key === 'home') {
+		move(0, k.shift)
+		return true
+	}
+	if (k.key === 'end') {
+		move(buf.length, k.shift)
+		return true
+	}
 
 	// Printable characters
 	if (k.char) {
