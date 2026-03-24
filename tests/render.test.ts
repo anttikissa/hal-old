@@ -45,6 +45,14 @@ describe('render', () => {
 		expect(output).not.toContain('\x1b[3J')
 	})
 
+	test('cursor-only move on same row still repaints cursor', () => {
+		prompt.setText('a', 1)
+		captureOutput(() => render.draw())
+		prompt.setText('a', 0)
+		const output = captureOutput(() => render.draw())
+		expect(output).not.toBe('')
+	})
+
 	test('writes ALL lines on force repaint', () => {
 		const tab = client.currentTab()!
 		tab.history.push({ type: 'info', text: 'hello' })

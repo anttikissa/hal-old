@@ -19,6 +19,7 @@ const CSI = '\x1b['
 
 let prevLines: string[] = []
 let cursorRow = 0
+let cursorCol = 1
 let fullscreen = false
 let peak = 0
 
@@ -27,6 +28,7 @@ const lineCountCache = new WeakMap<Tab, { entryCount: number; lineCount: number 
 function resetRenderer(): void {
 	prevLines = []
 	cursorRow = 0
+	cursorCol = 1
 	fullscreen = false
 	peak = 0
 }
@@ -151,6 +153,7 @@ function moveCursor(from: number, to: number): string {
 
 function positionCursor(from: number, target: { row: number; col: number }): string {
 	cursorRow = target.row
+	cursorCol = target.col
 	return moveCursor(from, target.row) + `\r${CSI}${target.col}G${CSI}?25h`
 }
 
@@ -188,7 +191,7 @@ function draw(force = false): void {
 		if ((lines[i] ?? '') !== (prevLines[i] ?? '')) { first = i; break }
 	}
 	if (first === -1) {
-		if (cursorRow === cursor.row && prevLines.length > 0) return
+		if (cursorRow === cursor.row && cursorCol === cursor.col && prevLines.length > 0) return
 		process.stdout.write(positionCursor(cursorRow, cursor))
 		return
 	}
@@ -231,6 +234,7 @@ function clearFrame(): void {
 	}
 	prevLines = []
 	cursorRow = 0
+	cursorCol = 1
 }
 
 export const render = { draw, resetRenderer, clearFrame }
