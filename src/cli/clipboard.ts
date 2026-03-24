@@ -3,6 +3,9 @@
 // Text paste is synchronous (pbpaste). Image paste is asynchronous: if the
 // clipboard has no text, we insert an [image:N] placeholder immediately and
 // resolve it later via osascript reading PNG data from the clipboard.
+//
+// Long multi-line pastes (>5 newlines) are saved to a temp file and replaced
+// with [/path/to/file.txt] to avoid flooding the prompt.
 
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
@@ -15,6 +18,8 @@ function ensureDir(dir: string): void {
 	if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
+// ── Async image probe ────────────────────────────────────────────────────────
+
 let pasteCounter = 0
 let pendingPastes = 0
 
@@ -22,6 +27,8 @@ function allocPlaceholder(): string {
 	return `[image:${++pasteCounter}]`
 }
 
+// Use osascript to read PNG data from the macOS clipboard. Returns the
+// path to the saved image file, or null if clipboard has no image.
 function getClipboardImageAsync(): Promise<string | null> {
 	if (process.platform !== 'darwin') return Promise.resolve(null)
 	ensureDir(IMAGE_DIR)
@@ -50,10 +57,14 @@ function readClipboardText(): string {
 
 type PasteResolve = (placeholder: string, replacement: string) => void
 
+// Read clipboard. Returns immediate text to insert.
+// If clipboard text is empty, inserts an [image:N] placeholder and probes
+// for an image asynchronously. Calls onResolve(placeholder, result) when done.
 function pasteFromClipboard(onResolve?: PasteResolve): string {
 	const text = readClipboardText()
 	if (text) return text
 
+	// No text — try async image probe
 	const placeholder = allocPlaceholder()
 	pendingPastes++
 	getClipboardImageAsync().then(imagePath => {
@@ -64,6 +75,7 @@ function pasteFromClipboard(onResolve?: PasteResolve): string {
 	return placeholder
 }
 
+// Save long paste to /tmp/hal/paste/NNNN.txt, return `[path]`.
 function saveMultilinePaste(text: string): string {
 	ensureDir(PASTE_DIR)
 	const existing = readdirSync(PASTE_DIR)
@@ -77,11 +89,15 @@ function saveMultilinePaste(text: string): string {
 
 const IMAGE_EXTS = /\.(png|jpg|jpeg|gif|webp)$/i
 
+// Normalize pasted text: fix line endings, strip control chars.
+// Single-line image path -> wrap in [brackets].
+// If >5 newlines, save to file and return `[path]` instead.
 function cleanPaste(raw: string): string {
 	const text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 		.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
 	if (!text) return ''
 
+	// Dragged image file — single path, wrap in brackets
 	const trimmed = text.trim()
 	if (trimmed.startsWith('/') && !trimmed.includes('\n')
 		&& IMAGE_EXTS.test(trimmed) && existsSync(trimmed)) {

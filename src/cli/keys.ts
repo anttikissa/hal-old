@@ -4,22 +4,27 @@
 // Goal: the rest of the app should not care whether Ghostty sent kitty CSI-u,
 // Terminal.app sent ESC-b for opt-left, or bracketed paste wrapped text in
 // ESC [ 200~ ... ESC [ 201~. This file turns all of that into one clean API.
+//
+// Three stages:
+//   1. splitKeys()  — tokenize raw data into individual key sequences
+//   2. parseKey()   — turn one token into a KeyEvent
+//   3. parseKeys()  — convenience: split + parse in one call
 
 export interface KeyEvent {
-	key: string
-	char?: string
+	key: string       // 'a', 'left', 'up', 'enter', 'backspace', 'tab', 'escape', etc.
+	char?: string     // printable character to insert (may be multi-byte from paste)
 	shift: boolean
-	alt: boolean
+	alt: boolean      // Option key on macOS
 	ctrl: boolean
-	cmd: boolean
+	cmd: boolean      // Super/Meta key; Command (⌘) on macOS
 }
 
 function ke(key: string, mods?: Partial<KeyEvent>): KeyEvent {
 	return { key, shift: false, alt: false, ctrl: false, cmd: false, ...mods }
 }
 
-// Raw CSI modifier value = 1 + bitmask.
-// Bits: 0=shift, 1=alt, 2=ctrl, 3=super/cmd.
+// ── CSI modifier bits ────────────────────────────────────────────────────────
+// Raw modifier value = 1 + bitmask. Bits: 0=shift, 1=alt, 2=ctrl, 3=super(cmd)
 function parseMods(raw: number): { shift: boolean; alt: boolean; ctrl: boolean; cmd: boolean } {
 	const m = Math.max(0, raw - 1)
 	return {
@@ -30,26 +35,34 @@ function parseMods(raw: number): { shift: boolean; alt: boolean; ctrl: boolean; 
 	}
 }
 
+// ── CSI sequences: \x1b[...X ─────────────────────────────────────────────────
+
+// Arrow/home/end keys identified by the final byte after CSI parameters.
 const CSI_SUFFIX_KEYS: Record<string, string> = {
 	A: 'up', B: 'down', C: 'right', D: 'left',
 	H: 'home', F: 'end',
 }
 
+// Function/editing keys identified by number before ~.
 const CSI_TILDE_KEYS: Record<number, string> = {
 	1: 'home', 2: 'insert', 3: 'delete', 4: 'end',
 	5: 'pageup', 6: 'pagedown',
 }
 
+// Parse a CSI sequence like \x1b[1;2D (shift+left) or \x1b[3~ (delete).
+// Kitty protocol adds :eventType to modifier (1=press, 2=repeat, 3=release);
+// we drop release events.
 function parseCsi(body: string, terminator: string): KeyEvent | null {
 	const parts = body.split(';')
 	const keyName = CSI_SUFFIX_KEYS[terminator]
 	if (keyName) {
 		const modField = parts[1] ?? ''
 		const [rawModStr, eventTypeStr] = modField.split(':', 2)
-		if (eventTypeStr === '3') return null
+		if (eventTypeStr === '3') return null // key release — ignore
 		const mod = parts.length >= 2 ? Number(rawModStr || '1') : 1
 		return ke(keyName, parseMods(mod))
 	}
+	// Tilde keys: \x1b[NUM~ or \x1b[NUM;MOD~
 	if (terminator === '~') {
 		const num = Number(parts[0])
 		const name = CSI_TILDE_KEYS[num]
@@ -63,7 +76,12 @@ function parseCsi(body: string, terminator: string): KeyEvent | null {
 	return null
 }
 
-// Kitty keyboard protocol: ESC [ codepoint ; modifier [ ; text ] u
+// ── Kitty CSI u: \x1b[codepoint;modifier[;text]u ────────────────────────────
+//
+// The kitty keyboard protocol encodes every key as a unicode codepoint plus
+// modifier bitmask. Ghostty/Kitty/iTerm send these when the app opts in
+// with CSI >19u (see cli.ts). This lets us receive Cmd+C/X/V etc. that
+// the terminal would otherwise intercept at the OS level.
 function parseCsiU(body: string): KeyEvent | null {
 	const fields = body.split(';')
 	const codepoint = Number((fields[0] || '').split(':', 1)[0])
@@ -73,10 +91,11 @@ function parseCsiU(body: string): KeyEvent | null {
 	const [rawModStr, eventTypeStr] = modPart.split(':', 2)
 	const rawMod = Number(rawModStr || '1')
 	const eventType = Number(eventTypeStr || '1')
-	if (!Number.isFinite(rawMod) || eventType === 3) return null
+	if (!Number.isFinite(rawMod) || eventType === 3) return null // drop key-up
 
 	const mods = parseMods(rawMod)
 
+	// Optional text field: codepoints separated by colons
 	let text: string | undefined
 	if (fields.length >= 3 && fields[2]) {
 		const cps = fields[2].split(':').map(Number)
@@ -85,25 +104,32 @@ function parseCsiU(body: string): KeyEvent | null {
 		}
 	}
 
+	// Special codepoints
 	if (codepoint === 13) return ke('enter', mods)
 	if (codepoint === 9) return ke('tab', mods)
 	if (codepoint === 27) return ke('escape', mods)
 	if (codepoint === 127 || codepoint === 8) return ke('backspace', mods)
 
-	// Ignore the modifier key by itself and private-use junk some terminals emit.
+	// Ignore the Super key by itself (0xffe3/0xffe4) and private-use area
+	// junk that some terminals emit for internal keys.
 	if (codepoint === 0xffe3 || codepoint === 0xffe4) return null
 	if (codepoint >= 0xe000 && codepoint <= 0xf8ff) return null
 
+	// Ctrl+key: reconstruct the control character name
 	if (mods.ctrl && !mods.cmd && codepoint >= 0 && codepoint <= 0x7f) {
 		const ch = String.fromCharCode(codepoint).toLowerCase()
 		return ke(ch, mods)
 	}
 
+	// Printable: use text field if available, else derive from codepoint
 	const ch = text ?? (codepoint >= 0x20 ? String.fromCodePoint(codepoint) : undefined)
 	const key = ch?.toLowerCase() ?? `u+${codepoint.toString(16)}`
 	return ke(key, { ...mods, char: (!mods.ctrl && !mods.cmd) ? ch : undefined })
 }
 
+// ── Ctrl key mapping ─────────────────────────────────────────────────────────
+// Maps byte values 0-31 and 127 to key names. Used for legacy single-byte
+// control codes (non-kitty terminals).
 const CTRL_KEYS: Record<number, string> = {
 	0: 'space', 1: 'a', 2: 'b', 3: 'c', 4: 'd', 5: 'e', 6: 'f', 7: 'g',
 	8: 'backspace', 9: 'tab', 10: 'enter', 11: 'k', 12: 'l', 13: 'enter',
@@ -113,14 +139,27 @@ const CTRL_KEYS: Record<number, string> = {
 	127: 'backspace',
 }
 
+// ── Tokenizer: split raw stdin data into individual key sequences ────────────
+//
+// stdin delivers bytes in chunks. A single chunk may contain multiple
+// keypresses concatenated together (especially when pasting). This function
+// splits them into individual tokens that parseKey() can handle.
+//
+// Bracketed paste (ESC[200~ ... ESC[201~) is extracted as a single token
+// containing the pasted text. The paste may span multiple data events, so
+// we buffer across calls.
+
 const PASTE_START = '\x1b[200~'
 const PASTE_END = '\x1b[201~'
+
+// Buffer for paste content that spans multiple stdin data events
 let pasteBuffer: string | null = null
 
 function splitKeys(data: string): string[] {
 	const out: string[] = []
 	let i = 0
 
+	// If we're mid-paste from a previous chunk, accumulate until end delimiter
 	if (pasteBuffer !== null) {
 		const endIdx = data.indexOf(PASTE_END)
 		if (endIdx >= 0) {
@@ -129,12 +168,14 @@ function splitKeys(data: string): string[] {
 			if (pasted) out.push(pasted)
 			i = endIdx + PASTE_END.length
 		} else {
+			// Still no end delimiter — buffer everything
 			pasteBuffer += data
 			return out
 		}
 	}
 
 	while (i < data.length) {
+		// Bracketed paste: extract content between delimiters as single token
 		if (data.startsWith(PASTE_START, i)) {
 			const contentStart = i + PASTE_START.length
 			const endIdx = data.indexOf(PASTE_END, contentStart)
@@ -143,6 +184,7 @@ function splitKeys(data: string): string[] {
 				if (pasted) out.push(pasted)
 				i = endIdx + PASTE_END.length
 			} else {
+				// Start buffering — end delimiter will come in a later chunk
 				pasteBuffer = data.slice(contentStart)
 				return out
 			}
@@ -151,25 +193,30 @@ function splitKeys(data: string): string[] {
 
 		if (data[i] === '\x1b') {
 			if (i + 1 < data.length && (data[i + 1] === '[' || data[i + 1] === 'O')) {
+				// CSI or SS3: scan parameter bytes (0x20-0x3f) then final byte
 				let j = i + 2
 				while (j < data.length && data.charCodeAt(j) >= 0x20 && data.charCodeAt(j) <= 0x3f) j++
-				if (j < data.length) j++
+				if (j < data.length) j++ // final byte
 				out.push(data.slice(i, j))
 				i = j
 			} else if (i + 2 < data.length && data[i + 1] === '\x1b' && (data[i + 2] === '[' || data[i + 2] === 'O')) {
+				// Alt+arrow: ESC ESC [ X (some terminals)
 				let j = i + 3
 				while (j < data.length && data.charCodeAt(j) >= 0x20 && data.charCodeAt(j) <= 0x3f) j++
 				if (j < data.length) j++
 				out.push(data.slice(i, j))
 				i = j
 			} else if (i + 1 < data.length) {
+				// Alt+key: ESC followed by a single character
 				out.push(data.slice(i, i + 2))
 				i += 2
 			} else {
+				// Lone ESC at the end of the chunk
 				out.push('\x1b')
 				i++
 			}
 		} else {
+			// Single character (printable or control)
 			out.push(data[i]!)
 			i++
 		}
@@ -178,53 +225,69 @@ function splitKeys(data: string): string[] {
 	return out
 }
 
+// ── Main entry point ─────────────────────────────────────────────────────────
+
+/** Parse a single key sequence token into a KeyEvent, or null if unrecognized. */
 function parseKey(data: string): KeyEvent | null {
 	if (!data) return null
 
+	// CSI sequence: \x1b[...
 	if (data.startsWith('\x1b[')) {
 		const terminator = data[data.length - 1]!
 		const body = data.slice(2, -1)
+		// Kitty CSI u
 		if (terminator === 'u') return parseCsiU(body)
 		return parseCsi(body, terminator)
 	}
 
+	// Alt+key: \x1b followed by char
 	if (data.length === 2 && data[0] === '\x1b') {
 		const ch = data[1]!
 		if (ch === '\r' || ch === '\n') return ke('enter', { alt: true })
 		if (ch === '\x7f') return ke('backspace', { alt: true })
+		// Some terminals send \x1bb/\x1bf for Alt+Left/Right
 		if (ch === 'b') return ke('left', { alt: true })
 		if (ch === 'f') return ke('right', { alt: true })
 		if (ch >= ' ') return ke(ch.toLowerCase(), { alt: true })
+		// Alt+Ctrl combo
 		const code = ch.charCodeAt(0)
 		const name = CTRL_KEYS[code]
 		if (name) return ke(name, { alt: true, ctrl: true })
 	}
 
+	// Alt+arrow: \x1b\x1b[X (some terminals)
 	if (data.length === 4 && data[0] === '\x1b' && data[1] === '\x1b' && data[2] === '[') {
 		const arrow = CSI_SUFFIX_KEYS[data[3]!]
 		if (arrow) return ke(arrow, { alt: true })
 	}
 
+	// Single escape
 	if (data === '\x1b') return ke('escape')
 
+	// Control characters
 	if (data.length === 1) {
 		const code = data.charCodeAt(0)
 		if (code < 32 || code === 127) {
 			const name = CTRL_KEYS[code]
 			if (name) {
+				// Tab, Enter, Backspace, Escape are their own keys (no ctrl flag)
 				if (name === 'tab' || name === 'enter' || name === 'backspace' || name === 'escape') {
 					return ke(name)
 				}
 				return ke(name, { ctrl: true })
 			}
 		}
+		// Printable ASCII
 		return ke(data.toLowerCase(), { char: data })
 	}
 
+	// Multi-byte paste or unicode character (not starting with ESC)
 	if (!data.startsWith('\x1b')) return ke(data, { char: data })
+
 	return null
 }
 
+/** Parse raw stdin data into key events (handles concatenated sequences). */
 function parseKeys(data: string): KeyEvent[] {
 	const events: KeyEvent[] = []
 	for (const token of splitKeys(data)) {
