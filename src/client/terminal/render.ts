@@ -44,6 +44,9 @@ const CSI = '\x1b['
 //   blockCache — rendered block lines keyed by block object + width.
 
 let prevLines: string[] = []
+// Frame row where chrome (tab bar, prompt box, status, help) begins. Recorded
+// during buildFrame so eraseChrome() knows where the transcript ends.
+let chromeRow = 0
 let cursorRow = 0
 let cursorCol = 0
 let fullscreen = false
@@ -136,6 +139,7 @@ function buildFrame(): { lines: string[]; cursor: { row: number; col: number } }
 	if (lines.length + chrome > rows) fullscreen = true
 
 	// 3. Chrome: tab bar, prompt box, status line, help bar.
+	chromeRow = lines.length
 	renderStatus.renderTabBar(lines)
 	renderStatus.renderPrompt(lines)
 	renderStatus.renderStatusLine(lines)
@@ -365,8 +369,31 @@ function clearFrame(): void {
 	cursorRow = 0
 }
 
+// Erase the chrome (tab bar, prompt box, status line, help bar) and any blank
+// padding above it, leaving the transcript on screen. Used on exit: we cannot
+// rely on the shell to clean up after us. zsh repaints its prompt with an
+// erase-to-end-of-display, but bash/readline only clears its own line, so
+// leftover Hal chrome stays visible below the returned shell prompt.
+function eraseChrome(): void {
+	if (terminalOutput.isExternalEditorOpen()) return
+	if (prevLines.length === 0) return
+	const rows = process.stdout.rows || 24
+	// Erase the blank padding rows too, so the shell prompt comes back right
+	// under the transcript instead of after a gap.
+	let eraseRow = chromeRow
+	while (eraseRow > 0 && prevLines[eraseRow - 1] === '') eraseRow--
+	// Terminals clamp cursor-up at the top of the visible screen; anything above
+	// the viewport is scrollback we cannot touch anyway.
+	const viewportTop = Math.max(0, prevLines.length - rows)
+	if (eraseRow < viewportTop) eraseRow = viewportTop
+	terminalOutput.write(`${moveCursor(cursorRow, eraseRow)}\r${CSI}J`)
+	prevLines = prevLines.slice(0, eraseRow)
+	cursorRow = eraseRow
+	cursorCol = 1
+}
+
 function hasAnimatedIndicators(): boolean {
 	return renderStatus.hasAnimatedIndicators() || renderHistory.hasAnimatedCursor(client.currentTab())
 }
 
-export const render = { config, draw, resetRenderer, invalidateHistoryCache, clearFrame, hasAnimatedIndicators }
+export const render = { config, draw, resetRenderer, invalidateHistoryCache, clearFrame, eraseChrome, hasAnimatedIndicators }
