@@ -44,9 +44,7 @@ const CSI = '\x1b['
 //   blockCache — rendered block lines keyed by block object + width.
 
 let prevLines: string[] = []
-// Frame row where chrome (tab bar, prompt box, status, help) begins. Recorded
-// during buildFrame so eraseChrome() knows where the transcript ends.
-let chromeRow = 0
+let chromeRow = 0 // frame row where chrome starts, i.e. where the transcript ends
 let cursorRow = 0
 let cursorCol = 0
 let fullscreen = false
@@ -369,27 +367,10 @@ function clearFrame(): void {
 	cursorRow = 0
 }
 
-// Erase the chrome (tab bar, prompt box, status line, help bar) and any blank
-// padding above it, leaving the transcript on screen. Used on exit: we cannot
-// rely on the shell to clean up after us. zsh repaints its prompt with an
-// erase-to-end-of-display, but bash/readline only clears its own line, so
-// leftover Hal chrome stays visible below the returned shell prompt.
+// Erase our chrome on exit, keeping the transcript above for copy/paste. bash
+// only clears its own prompt line, so whatever we leave below stays on screen.
 function eraseChrome(): void {
-	if (terminalOutput.isExternalEditorOpen()) return
-	if (prevLines.length === 0) return
-	const rows = process.stdout.rows || 24
-	// Erase the blank padding rows too, so the shell prompt comes back right
-	// under the transcript instead of after a gap.
-	let eraseRow = chromeRow
-	while (eraseRow > 0 && prevLines[eraseRow - 1] === '') eraseRow--
-	// Terminals clamp cursor-up at the top of the visible screen; anything above
-	// the viewport is scrollback we cannot touch anyway.
-	const viewportTop = Math.max(0, prevLines.length - rows)
-	if (eraseRow < viewportTop) eraseRow = viewportTop
-	terminalOutput.write(`${moveCursor(cursorRow, eraseRow)}\r${CSI}J`)
-	prevLines = prevLines.slice(0, eraseRow)
-	cursorRow = eraseRow
-	cursorCol = 1
+	terminalOutput.write(`${moveCursor(cursorRow, chromeRow)}\r${CSI}J`)
 }
 
 function hasAnimatedIndicators(): boolean {

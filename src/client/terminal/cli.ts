@@ -107,9 +107,7 @@ function draw(force = false): void {
 }
 
 function exitCli(code: number): void {
-	// Preserve the last fully up-to-date transcript for copy/paste on exit, but
-	// erase our chrome ourselves: bash/readline only clears its own prompt line,
-	// so anything we leave below the cursor stays on screen after we quit.
+	// Preserve the last fully up-to-date transcript for copy/paste on exit.
 	draw(true)
 	render.eraseChrome()
 	cleanupTerminal()
