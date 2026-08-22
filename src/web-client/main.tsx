@@ -57,6 +57,17 @@ function AuthenticatedApp(props: AuthenticatedAppProps) {
 		return Promise.resolve(true)
 	}
 
+	async function attachImage(file: File): Promise<string> {
+		const form = new FormData()
+		form.append('file', file, file.name)
+		const response = await fetch(`/upload?auth=${encodeURIComponent(props.token)}`, { method: 'POST', body: form })
+		const body = await response.json().catch(() => null) as { path?: unknown; error?: unknown } | null
+		if (!response.ok || !body || typeof body.path !== 'string') {
+			throw new Error(body && typeof body.error === 'string' ? body.error : `HTTP ${response.status}`)
+		}
+		return body.path
+	}
+
 	onSettled(() => {
 		const connection = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`)
 		socket = connection
@@ -104,7 +115,7 @@ function AuthenticatedApp(props: AuthenticatedAppProps) {
 	return <>
 		<SessionTabs sessions={sharedState().sessions} selected={selected()} onSelect={selectSession} />
 		<Transcript items={transcript()} />
-		<PromptComposer onSubmit={submitPrompt} />
+		<PromptComposer onSubmit={submitPrompt} onAttach={attachImage} />
 	</>
 }
 
