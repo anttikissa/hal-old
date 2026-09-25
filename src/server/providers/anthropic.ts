@@ -171,7 +171,7 @@ async function* parseStream(
 	logContext?: { sessionId?: string; model?: string },
 ): AsyncGenerator<ProviderStreamEvent> {
 	// Tool calls are assembled across content_block_start / delta / stop events
-	const tools = new Map<number, { id: string; name: string; json: string }>()
+	const tools = new Map<number, { id: string; name: string; json: string; input?: Record<string, unknown> }>()
 	const serverTools = new Map<number, { block: any; json: string }>()
 	const usage = { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 }
 	let gotStop = false
@@ -180,7 +180,7 @@ async function* parseStream(
 		if (ev.type === 'content_block_start') {
 			const b = ev.content_block
 			if (b.type === 'tool_use') {
-				tools.set(ev.index, { id: b.id, name: b.name, json: '' })
+				tools.set(ev.index, { id: b.id, name: b.name, json: '', input: b.input })
 			} else if (b.type === 'server_tool_use') {
 				// Server-side tool input streams as input_json_delta after this empty block.
 				serverTools.set(ev.index, { block: b, json: '' })
@@ -202,7 +202,8 @@ async function* parseStream(
 		} else if (ev.type === 'content_block_stop') {
 			const t = tools.get(ev.index)
 			if (t) {
-				const parsed = providerShared.parseToolInput(t.json)
+				// Anthropic sends the complete start input for argument-less tools without JSON deltas.
+				const parsed = providerShared.parseToolInput(t.json || (t.input && typeof t.input === 'object' && !Array.isArray(t.input) ? JSON.stringify(t.input) : ''))
 				yield { type: 'tool_call', id: t.id, name: t.name, input: parsed.input, rawJson: t.json, ...(parsed.parseError ? { parseError: parsed.parseError } : {}) }
 				tools.delete(ev.index)
 			}

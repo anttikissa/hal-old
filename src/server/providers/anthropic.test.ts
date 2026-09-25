@@ -241,6 +241,20 @@ test('anthropic stream without message_stop does not emit done', async () => {
 	expect(events.some((event) => event.type === 'done')).toBe(false)
 })
 
+test('anthropic accepts a zero-argument tool with an empty input delta', async () => {
+	installFetchMock(async () => new Response([
+		'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tool_1","name":"wait","input":{}}}',
+		'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}}',
+		'data: {"type":"content_block_stop","index":0}',
+		'data: {"type":"message_stop"}',
+		'',
+	].join('\n'), { status: 200, headers: { 'content-type': 'text/event-stream' } }) as any)
+
+	const events = await collect({ value: 'tok-test', type: 'token' })
+	expect(events.find((event) => event.type === 'tool_call')).toMatchObject({ type: 'tool_call', name: 'wait', input: {} })
+	expect(events.find((event) => event.type === 'tool_call')?.parseError).toBeUndefined()
+})
+
 test('anthropic provider surfaces refusal stop details instead of an empty response', async () => {
 	const stopDetails = {
 		type: 'refusal',
