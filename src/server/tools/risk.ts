@@ -3,6 +3,7 @@
 // secret-exposing operations so accidental model mistakes are visible.
 
 import { resolve } from 'path'
+const config = { enabled: true }
 
 export type RiskSeverity = 'danger' | 'secret' | 'maybe-secret'
 // `match` is the exact offending substring of the inspected text, so the
@@ -103,6 +104,7 @@ function checkShell(command: string, out: RiskFinding[]): void {
 
 function analyzeToolCall(name: string, input: unknown): RiskFinding[] {
 	const raw = input && typeof input === 'object' ? input as Record<string, unknown> : {}
+	if (!config.enabled) return []
 	const out: RiskFinding[] = []
 	if (name === 'eval') return out
 	if (name === 'bash') checkShell(String(raw.command ?? ''), out)
@@ -117,4 +119,4 @@ function analyzeToolCall(name: string, input: unknown): RiskFinding[] {
 	return out
 }
 
-export const risk = { analyzeToolCall, checkShell, rmRfIsOnlySafeTmp }
+export const risk = { config, analyzeToolCall, checkShell, rmRfIsOnlySafeTmp }

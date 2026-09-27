@@ -23,6 +23,7 @@ import { halProvider } from './server/providers/hal.ts'
 import { subscriptionUsage } from './common/subscription-usage.ts'
 import { accountRotation } from './server/account-rotation.ts'
 import { toolRegistry } from './server/tools/tool.ts'
+import { risk } from './server/tools/risk.ts'
 import { log } from './utils/log.ts'
 import { ipc } from './server/file-ipc.ts'
 import { webUpload } from './server/web-upload.ts'
@@ -50,6 +51,7 @@ const modules: Record<string, Record<string, any>> = {
 	openai: openai.config,
 	halProvider: halProvider.config,
 	toolRegistry: toolRegistry.config,
+	risk: risk.config,
 	log: log.config,
 	ipc: ipc.config,
 	web: webUpload.config,

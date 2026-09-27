@@ -1,5 +1,23 @@
 import { expect, test } from 'bun:test'
 import { risk } from './risk.ts'
+import { config } from '../../config.ts'
+
+// Config overrides must control the same analyzer used by the agent loop.
+test('risk can be disabled through config and re-enabled', () => {
+	const originalData = config.data
+	const originalEnabled = risk.config.enabled
+	try {
+		config.data = { risk: { enabled: false } }
+		config.apply()
+		expect(reasons('rm -rf /')).toEqual([])
+		expect(risk.analyzeToolCall('read', { path: 'auth.ason' })).toEqual([])
+		risk.config.enabled = true
+		expect(reasons('rm -rf /')).toContain('Destructive rm command')
+	} finally {
+		config.data = originalData
+		risk.config.enabled = originalEnabled
+	}
+})
 
 function reasons(command: string): string[] {
 	return risk.analyzeToolCall('bash', { command }).map((item) => item.reason)

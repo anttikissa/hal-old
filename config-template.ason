@@ -144,6 +144,10 @@
 		// Hard cap for any tool result sent back to the model.
 		maxOutputBytes: 65536
 	},
+	risk: {
+		// Ask before likely destructive or secret-exposing tool calls.
+		enabled: true
+	},
 	spawnAgent: {
 		// Spawn slots available to each user-created session; recursive limits transfer these slots.
 		initialLimit: 5
