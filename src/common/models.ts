@@ -29,7 +29,7 @@ const CATALOG: CatalogEntry[] = [
 	{ group: 'Anthropic', alias: 'haiku', fullId: 'anthropic/claude-haiku-4-5', fallbackContext: 200_000, pricing: { input: 1, output: 5 }, track: 'haiku' },
 	{ group: 'Anthropic', alias: 'fable', fullId: 'anthropic/claude-fable-5-1', fallbackContext: 1_000_000, pricing: { input: 10, output: 50 }, track: 'fable' },
 	{ group: 'OpenAI', alias: 'astra', fullId: 'openai/gpt-6-astra', fallbackContext: 1_050_000, pricing: { input: 10, output: 50 } },
-	{ group: 'OpenAI', alias: 'gpt', aliases: ['openai', 'sol'], fullId: 'openai/gpt-6-sol', fallbackContext: 1_050_000, pricing: { input: 2, output: 10 }, track: 'sol' },
+	{ group: 'OpenAI', alias: 'gpt', aliases: ['openai', 'sol'], fullId: 'openai/gpt-6.1-sol', fallbackContext: 1_050_000, pricing: { input: 2, output: 10 }, track: 'sol' },
 	{ group: 'OpenAI', alias: 'terra', fullId: 'openai/gpt-5.6-terra', fallbackContext: 1_050_000, pricing: { input: 2, output: 12 }, track: 'terra' },
 	{ group: 'OpenAI', alias: 'luna', fullId: 'openai/gpt-6-luna', fallbackContext: 1_050_000, pricing: { input: 0.1, output: 0.5 }, track: 'luna' },
 	{ group: 'OpenAI', alias: 'gpt-5.6-sol', fullId: 'openai/gpt-5.6-sol', fallbackContext: 1_050_000, pricing: { input: 4, output: 20 } },
@@ -179,7 +179,7 @@ function reasoningEffort(fullId: string | undefined): string {
 	if (!fullId) return ''
 	const modelId = fullId.includes('/') ? fullId.slice(fullId.indexOf('/') + 1) : fullId
 	if (modelId.includes('codex')) return 'xhigh'
-	if (/^o\d/.test(modelId) || /^gpt-5\./.test(modelId) || modelId.startsWith('gpt-6-')) return 'high'
+	if (/^o\d/.test(modelId) || /^gpt-[56](?:\.|-)/.test(modelId)) return 'high'
 	return ''
 }
 

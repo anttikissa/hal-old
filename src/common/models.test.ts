@@ -44,16 +44,18 @@ test('an unknown model with no registry name falls back to its bare id', () => {
 	expect(models.displayModel('openrouter/stealth/ox-alpha')).toBe('stealth/ox-alpha')
 })
 
-test('sol and luna aliases resolve to GPT-6 while terra remains on GPT-5.6', () => {
-	expect(models.resolveModel('sol')).toBe('openai/gpt-6-sol')
+test('sol and luna aliases resolve to current GPT tiers while terra remains on GPT-5.6', () => {
+	expect(models.resolveModel('sol')).toBe('openai/gpt-6.1-sol')
+	expect(models.resolveModel('gpt')).toBe('openai/gpt-6.1-sol')
+	expect(models.resolveModel('openai')).toBe('openai/gpt-6.1-sol')
 	expect(models.resolveModel('terra')).toBe('openai/gpt-5.6-terra')
 	expect(models.resolveModel('luna')).toBe('openai/gpt-6-luna')
-	expect(models.reasoningEffort('openai/gpt-6-sol')).toBe('high')
+	expect(models.reasoningEffort('openai/gpt-6.1-sol')).toBe('high')
 	expect(models.reasoningEffort('openai/gpt-6-luna')).toBe('high')
 })
 
 test('curated prices match current standard API rates', () => {
-	expect(models.pricing('openai/gpt-6-sol')).toEqual({ input: 2, output: 10 })
+	expect(models.pricing('openai/gpt-6.1-sol')).toEqual({ input: 2, output: 10 })
 	expect(models.pricing('openai/gpt-6-luna')).toEqual({ input: 0.1, output: 0.5 })
 	expect(models.pricing('openai/gpt-5.6-terra')).toEqual({ input: 2, output: 12 })
 	expect(models.pricing('openai/gpt-5.6-sol')).toEqual({ input: 4, output: 20 })
@@ -95,8 +97,8 @@ test('hydrated tier aliases track newer generations but ignore pro variants', ()
 		'gpt-5.8-sol-pro': 1_050_000,
 	})
 	expect(models.resolveModel('terra')).toBe('openai/gpt-5.7-terra')
-	expect(models.resolveModel('gpt')).toBe('openai/gpt-6-sol')
-	expect(models.resolveModel('sol')).toBe('openai/gpt-6-sol')
+	expect(models.resolveModel('gpt')).toBe('openai/gpt-6.1-sol')
+	expect(models.resolveModel('sol')).toBe('openai/gpt-6.1-sol')
 })
 
 
@@ -110,8 +112,8 @@ test('updated anthropic aliases avoid dated model ids', () => {
 test('model picker lists updated frontier aliases', () => {
 	expect(models.listModelChoices().find((item) => item.value === 'gpt')).toMatchObject({
 		value: 'gpt',
-		label: expect.stringContaining('GPT 6 Sol'),
-		search: expect.stringContaining('openai/gpt-6-sol'),
+		label: expect.stringContaining('GPT 6.1 Sol'),
+		search: expect.stringContaining('openai/gpt-6.1-sol'),
 	})
 	expect(models.listModelChoices().find((item) => item.value === 'terra')).toMatchObject({ fullId: 'openai/gpt-5.6-terra' })
 	expect(models.listModelChoices().find((item) => item.value === 'luna')).toMatchObject({
@@ -261,11 +263,11 @@ test('model picker and aliases use the newest Anthropic model from catalog or ca
 	expect(models.resolveModel('claude')).toBe('anthropic/claude-opus-5-5')
 	expect(models.resolveModel('sonnet')).toBe('anthropic/claude-sonnet-5-5')
 	// No tier models in cache: the gpt alias falls back to the catalog Sol entry.
-	expect(models.resolveModel('gpt')).toBe('openai/gpt-6-sol')
-	expect(models.resolveModel('openai')).toBe('openai/gpt-6-sol')
+	expect(models.resolveModel('gpt')).toBe('openai/gpt-6.1-sol')
+	expect(models.resolveModel('openai')).toBe('openai/gpt-6.1-sol')
 	expect(models.listModelChoices().find((item) => item.value === 'opus')).toMatchObject({ search: expect.stringContaining('anthropic/claude-opus-5-5') })
 	expect(models.listModelChoices().find((item) => item.value === 'sonnet')).toMatchObject({ search: expect.stringContaining('anthropic/claude-sonnet-5-5') })
-	expect(models.listModelChoices().find((item) => item.value === 'gpt')).toMatchObject({ search: expect.stringContaining('openai/gpt-6-sol') })
+	expect(models.listModelChoices().find((item) => item.value === 'gpt')).toMatchObject({ search: expect.stringContaining('openai/gpt-6.1-sol') })
 	expect(models.listModelChoices().find((item) => item.value === 'gpt-5.6')).toMatchObject({ search: expect.stringContaining('openai/gpt-5.6') })
 	expect(models.modelCompletionNames()).toContain('opus-5-5')
 })

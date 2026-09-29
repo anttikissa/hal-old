@@ -234,7 +234,7 @@ test('intro defaults to the best detected API-key route, breaks ties at random, 
 		expect(halProvider.introDefaultModel()).toBe('gpt')
 		const last = halProvider.pages().at(-1)!
 		expect(last.steps).toContainEqual({ type: 'config', key: 'models.default', value: 'gpt' })
-		expect(last.text).toContain('default model to `gpt`, aliased to openai/gpt-6-sol (GPT 6 Sol)')
+		expect(last.text).toContain('default model to `gpt`, aliased to openai/gpt-6.1-sol (GPT 6.1 Sol)')
 	} finally {
 		halProvider.random = originalRandom
 		for (const [name, value] of saved) {
