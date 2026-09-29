@@ -82,7 +82,7 @@ describe('popup', () => {
 		overlay = popup.buildOverlay(120, 30)
 		clean = cleanLines(overlay!.lines).join('\n')
 		expect(clean).toContain('▼ anthropic (default: opus-5-5)')
-		expect(clean).toContain('▶ sonnet (default: sonnet-5)')
+		expect(clean).toContain('▶ sonnet (default: sonnet-5-5)')
 
 		popup.handleKey(key('left'))
 		overlay = popup.buildOverlay(120, 30)
