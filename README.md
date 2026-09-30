@@ -23,7 +23,7 @@ one terminal, though you can use more if you like; they all connect to the same 
 ## Installation
 
 ```
-git clone https://github.com/anttikissa/hal.git ~/.hal
+git clone https://github.com/anttikissa/hal-old.git ~/.hal
 cd ~/.hal
 # Optionally, do something like this:
 # claude -p "I just downloaded this project, check that it does what it claims to do and that there are no backdoors"
